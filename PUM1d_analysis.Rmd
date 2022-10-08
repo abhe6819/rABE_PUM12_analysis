@@ -1,0 +1,227 @@
+---
+title: "PUM1d_analysis"
+author: "Abby Hein"
+date: "2022-10-02"
+output: html_document
+---
+1- move id cols to back (PUM rABE and eClIP)
+2- convert PUM vcf to tsv (from csv)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Documents/FloorRotation_Fall22/")
+library(dplyr)
+library(ChIPpeakAnno)
+library(dplyr)
+library(ggplot2)
+library(reticulate) #for writing chunks in python
+library(wesanderson)
+library(tidyr)
+library(seqinr)
+#still gotta give colnames and better variable names
+```
+
+
+```{r}
+#in k562
+PUM2_eclip <- read.table("Jarmoskaite_2019_data/all_unprocessed_st_merged.00.hPUM2_all.random_5e 06.input.ENCFF786ZZB.R2.500.rep2.ENCFF732EQX.rep1.ENCFF231WHF.temp37.co.bed", quote = "", sep = "\t", header = T)
+
+#write fasta for 6U ddG fasta
+write.fasta(sequences = as.list(PUM2_eclip$seq), names = PUM2_eclip$name, "PUM1_analysis/PUM2eclip_seq.fa", as.string = TRUE)
+
+#in HEK
+PUM1_Hdox_rabe <- read.csv("PUM12_deaminase_data/PUM1-rABE_cmh_A-G-doxH.vcf")
+```
+
+
+```{r}
+#reorg to fit bed format
+reorgPUM2_eclip <- PUM2_eclip %>% relocate(name, .after = last_col()) %>% relocate(split_id, .after = last_col()) %>% relocate(strand, .after = last_col())
+reorgPUM1_Hdox_rabe <- PUM1_Hdox_rabe %>% relocate(X, .after = last_col())  %>% relocate(X.1, .after = last_col()) %>% relocate(exon_strand, .after = last_col())
+
+#filter Jarmoskaite data (according to direction by herchlag lab (no nc rna and split id  < 10))
+reorgPUM2_eclip_filt <- filter(reorgPUM2_eclip, (PUM2_eclip$annotation=="3' UTR"| PUM2_eclip$annotation=="5' UTR"| PUM2_eclip$annotation=='exon')&(PUM2_eclip$score != '.')&(PUM2_eclip$split_id < 10)&(PUM2_eclip$gene_type=='protein-coding'))
+
+#filer rABE data by p-value <= 0.05
+reorgPUM1_Hdox_rabe_filt <- filter(reorgPUM1_Hdox_rabe, reorgPUM1_Hdox_rabe$padj<=0.05)
+#write bed files
+write.table(reorgPUM1_Hdox_rabe[,-c(4:45)], "PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+write.table(reorgPUM1_Hdox_rabe_filt[,-c(4:45)], "PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+
+```{bash engine.opts='-l'}
+sort -k1,1 -k2,2n PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.bed > PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed
+
+sort -k1,1 -k2,2n PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.bed > PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed
+
+bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM1_analysis/PUM1_downstreamclosest_eclip.bed
+
+#measuring genomic distance not transcriptomic (consider this? https://www.bioconductor.org/packages/devel/bioc/vignettes/ensembldb/inst/doc/coordinate-mapping.html)
+bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -s > PUM1_analysis/PUM1_updownstreamclosest_eclip.bed
+
+bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM1_analysis/shuffled_PUM1_downstreamclosest_eclip.bed
+
+bedtools fisher -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/sorted.human.hg38.genome
+
+bedtools fisher -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/sorted.human.hg38.genome
+```
+
+
+
+```{r}
+PUM2_eclipBED <-toGRanges("reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed")
+PUM1_Hdox_rabeBED<- toGRanges("PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed")
+
+PUM1_bedClosest <-read.table("PUM1_analysis/PUM1_downstreamclosest_eclip.bed", sep = "\t", header = F)
+PUM1_shuffled_bedClosest <-read.table("PUM1_analysis/shuffled_PUM1_downstreamclosest_eclip.bed", sep = "\t", header = F)
+PUM1_udbedClosest <-read.table("PUM1_analysis/PUM1_updownstreamclosest_eclip.bed", sep = "\t", header = F)
+
+#lets do some stats
+#add column for filtered distance (1= within 50, 2=within 100 ect...)
+PUM1_bedClosest <- PUM1_bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Group", values_to = "isit")
+
+PUM1_shuffled_bedClosest <- PUM1_shuffled_bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Group", values_to = "isit")
+
+#filter(PUM1_bedClosest, is.na(isit)==FALSE) %>% 
+  #ggplot( aes(x = V13,y=..scaled.. , group = isit, fill=isit)) +
+  #geom_density(alpha = 0.6)
+
+filter(PUM1_bedClosest, is.na(isit)==FALSE) %>% 
+  ggplot( aes(x = V13, group = isit, fill=isit)) +
+  geom_density(alpha = 0.6)+
+  scale_fill_manual(values=wes_palette("FantasticFox1", n=3))
+
+filter(PUM1_shuffled_bedClosest, is.na(isit)==FALSE) %>% 
+  ggplot( aes(x = V13, group = isit, fill=isit)) +
+  geom_density(alpha = 0.6)+
+  scale_fill_manual(values=wes_palette("FantasticFox1", n=3))
+
+print("median distance with different window sizes")
+print("150 nt:")
+tapply(PUM1_bedClosest$V13, PUM1_bedClosest$isit, summary)
+```
+
+
+```{r}
+colnames(PUM1_bedClosest)[10] <- c("name")
+colnames(PUM1_bedClosest)[4] <- c("X")
+#filter eclip by ids in bed closest
+PUM1_bedClosest <- left_join(PUM1_bedClosest, reorgPUM2_eclip_filt[, c("name", "ddG", "numAdjMotif", "ss_ddG")], by = "name")
+PUM1_bedClosest <- left_join(PUM1_bedClosest, reorgPUM1_Hdox_rabe[,c("X", "OR", "diffratios", "padj", "avgExonDP")], by = "X")
+#resort by order in bed closest
+#plot cons seq ddg vs PUM1 diffratios
+filter(PUM1_bedClosest, isit=='a', diffratios > 0.004, numAdjMotif<=0, ss_ddG < 10) %>% 
+  ggplot( aes(x = ddG, y = diffratios, color = ss_ddG))+
+    geom_point()+
+    geom_smooth(method = "glm", color = "coral")+
+    scale_y_log10()
+    
+filter(PUM1_bedClosest, isit=='a', diffratios > 0.004, ss_ddG < 10) %>% 
+  ggplot( aes(x = as.factor(numAdjMotif), y = diffratios, color=numAdjMotif))+
+    geom_boxplot()+
+    geom_smooth(method = "glm", color = "coral")+
+    scale_y_log10()
+
+filter(PUM1_bedClosest, isit=='a', diffratios > 0.004, numAdjMotif<=0) %>% 
+  ggplot( aes(x = ss_ddG, y = diffratios, color = numAdjMotif))+
+    geom_point()+
+    geom_smooth(method = "glm", color = "coral")+
+    scale_y_log10()
+
+filter(PUM1_bedClosest, isit=='a', diffratios > 0.004, ss_ddG < 10, ddG<=3) %>% 
+  ggplot( aes(x = ddG, y = padj, color = V13))+
+    geom_point()+
+    scale_y_reverse()
+
+```
+
+
+```{r}
+#glm
+PUM1_ddg_Fit <- glm(diffratios ~ ddG, data = filter(PUM1_bedClosest, isit=='a', diffratios > 0.004, numAdjMotif<=0, ss_ddG < 10))
+summary(PUM1_ddg_Fit)
+with(summary(PUM1_ddg_Fit), 1 - deviance/null.deviance)
+x <- filter(PUM1_bedClosest, isit=='a', diffratios > 0.004, numAdjMotif<=0, ss_ddG < 10)
+cor.test(x=x$diffratios, y=x$ddG, method="spearman", exact = FALSE)
+```
+
+
+```{r}
+# rerun with adjusted 6U model (see paper)
+#try hexplot (heatmap scatter plot) geom_hex
+
+# python deltadeltaG_PUM1prediction.py -fi PUM2eclip_seq.fa -o PUM1_adj_ddG.txt
+```
+
+
+```{r, eval=FALSE}
+adjDDGtxt <- read.table("PUM1_analysis/PUM1_adj_ddG.txt", sep = '\n')
+numRow_predddG <- nrow(adjDDGtxt)
+numseq_predddG <- numRow_predddG/12
+PUM1adj6U_ddG <- data.frame(name=rep(NA, numseq_predddG), adj6U_ddG =rep(NA, numseq_predddG))
+jj <-1
+for (ii in seq(1, numRow_predddG, 12)) {
+  nt_reg <- rep(NA,11)
+  adjDDG$name[jj] <- adjDDGtxt[ii,]
+  nt_reg <- min(adjDDGtxt[(ii+1):(ii+11),])
+  adjDDG$ddg[jj] <- min(nt_reg)
+  jj <- jj+1
+}
+PUM1adj6U_ddG$name <- gsub(">", "", as.character(PUM1adj6U_ddG$name))
+write.csv(PUM1adj6U_ddG, "PUM1_analysis/PUM1adj6U_ddG.csv")
+```
+
+
+```{r}
+PUM1_bedClosest <- left_join(PUM1_bedClosest, PUM1adj6U_ddG, by = "name")
+PUM1_bedClosest$adj6U_ddG<- as.numeric(PUM1_bedClosest$adj6U_ddG)
+plot(PUM1_bedClosest$ddG, PUM1_bedClosest$adj6U_ddG)
+
+filter(PUM1_bedClosest, isit=='c') %>% 
+  ggplot( aes(x = adj6U_ddG, y = diffratios, color = V13))+
+    geom_point()+
+    geom_smooth(method = "glm", color = "coral")
+
+```
+
+```{r}
+PUM1_bedClosest_weCLIP <- left_join(PUM1_bedClosest, reorgPUM2_eclip_filt[,c("name", "clip_signal_per_tpm", "clip_input_per_tpm")], by = "name")
+
+filter(PUM1_bedClosest_weCLIP, isit=='c') %>% 
+  ggplot( aes(x = clip_signal_per_tpm/clip_input_per_tpm, y = diffratios, color = V13))+
+    geom_point()+
+    geom_smooth(method = "glm", color = "coral")
+
+filter(PUM1_bedClosest_weCLIP, isit=='a', diffratios > 0.002, ss_ddG <= 10, ddG<=3) %>% 
+  ggplot( aes(x = as.factor(numAdjMotif), y = clip_signal_per_tpm/clip_input_per_tpm, color=numAdjMotif))+
+    geom_boxplot()+
+    geom_smooth(method = "glm", color = "coral")+
+    scale_y_log10()
+
+filter(PUM1_bedClosest_weCLIP, isit=='c', numAdjMotif <= 1) %>% 
+  ggplot( aes(x = ss_ddG, y = clip_signal_per_tpm/clip_input_per_tpm, color = V13))+
+    geom_point()+
+    geom_smooth(method = "glm", color = "coral")+
+    scale_y_log10()
+```
+
+```{r}
+ddg_Fit_score <- glm((clip_signal_per_tpm/clip_input_per_tpm) ~ ddG, data = filter(PUM1_bedClosest_weCLIP, isit=='c'))
+summary(ddg_Fit_score)
+#R^2
+with(summary(ddg_Fit_score), 1 - deviance/null.deviance)
+
+cor.test(x=(PUM1_bedClosest_weCLIP$clip_signal_per_tpm/PUM1_bedClosest_weCLIP$clip_input_per_tpm), y=PUM1_bedClosest_weCLIP$ddG, method="pearson",na.action = na.omit)
+```
+# PUM1 eclip data
+
+# upstream t deaminase
+
+## Low Dox
+
+
+# PUM2 APOBEC1 deaminase data
+## High Dox
+
+## Low Dow

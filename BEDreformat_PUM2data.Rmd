@@ -1,0 +1,138 @@
+---
+title: "BEDdata_formatting"
+author: "Abby Hein"
+date: "2022-09-29"
+output: html_document
+---
+1- move id cols to back (PUM rABE and eClIP)
+2- convert PUM vcf to tsv (from csv)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Documents/FloorRotation_Fall22/")
+library(dplyr)
+library(ChIPpeakAnno)
+library(dplyr)
+library(ggplot2)
+library(reticulate) #for writing chunks in python
+library(wesanderson)
+library(tidyr)
+#still gotta give colnames and better variable names
+```
+
+
+```{r}
+#in k562
+PUM2_eclip <- read.table("Jarmoskaite_2019_data/all_unprocessed_st_merged.00.hPUM2_all.random_5e 06.input.ENCFF786ZZB.R2.500.rep2.ENCFF732EQX.rep1.ENCFF231WHF.temp37.co.bed", quote = "", sep = "\t", header = T)
+
+#in HEK
+PUM2_Hdox_rabe <- read.csv("PUM12_deaminase_data/PUM2-rABE_cmh_A-G-doxH.vcf")
+```
+
+
+```{r}
+#reorg to fit bed format
+reorgPUM2_eclip <- PUM2_eclip %>% relocate(name, .after = last_col()) %>% relocate(split_id, .after = last_col()) %>% relocate(strand, .after = last_col())
+reorgPUM2_Hdox_rabe <- PUM2_Hdox_rabe %>% relocate(X, .after = last_col())  %>% relocate(X.1, .after = last_col()) %>% relocate(exon_strand, .after = last_col())
+
+#filter Jarmoskaite data (according to direction by herchlag lab (no nc rna and split id  < 10))
+reorgPUM2_eclip_filt <- filter(reorgPUM2_eclip, (PUM2_eclip$annotation=="3' UTR"| PUM2_eclip$annotation=="5' UTR"| PUM2_eclip$annotation=='exon')&(PUM2_eclip$score != '.')&(PUM2_eclip$split_id < 10)&(PUM2_eclip$gene_type=='protein-coding'))
+
+#filer rABE data by p-value <= 0.05
+reorgPUM2_Hdox_rabe_filt <- filter(reorgPUM2_Hdox_rabe, reorgPUM2_Hdox_rabe$padj<=0.05)
+#write bed files
+write.table(reorgPUM2_eclip[,-c(4:24)], "reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+write.table(reorgPUM2_Hdox_rabe[,-c(4:45)], "PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+write.table(reorgPUM2_eclip_filt[,-c(4:24)], "reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+write.table(reorgPUM2_Hdox_rabe_filt[,-c(4:45)], "PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+
+```{bash engine.opts='-l'}
+sort -k1,1 -k2,2n reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.bed > reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed
+
+sort -k1,1 -k2,2n reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.bed > reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed
+
+sort -k1,1 -k2,2n reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.bed > reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed
+
+sort -k1,1 -k2,2n reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.bed > reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed
+
+sort -k1,1 -k2,2n genomeFiles/human.hg38.genome > genomeFiles/sorted.human.hg38.genome
+
+bedtools closest -a reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM2_downstreamclosest_eclip.bed
+
+#measuring genomic distance not transcriptomic (consider this? https://www.bioconductor.org/packages/devel/bioc/vignettes/ensembldb/inst/doc/coordinate-mapping.html)
+bedtools closest -a reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -s > PUM2_updownstreamclosest_eclip.bed
+
+bedtools shuffle -i reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/human.hg38.genome | sort -k1,1 -k2,2n  > shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed
+
+bedtools closest -a reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > shuffled_PUM2_downstreamclosest_eclip.bed
+
+bedtools fisher -a reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/sorted.human.hg38.genome
+
+bedtools fisher -a reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/sorted.human.hg38.genome
+```
+
+
+
+```{r}
+PUM2_eclipBED <-toGRanges("reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed")
+PUM2_Hdox_rabeBED<- toGRanges("reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed")
+
+bedClosest <-read.table("testbedclose.bed", sep = "\t", header = F)
+shuffled_bedClosest <-read.table("shuffled_testbedclose.bed", sep = "\t", header = F)
+udbedClosest <-read.table("upanddown_testbedclose.bed", sep = "\t", header = F)
+
+#lets do some stats
+#add column for filtered distance (1= within 50, 2=within 100 ect...)
+bedClosest <- bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Group", values_to = "isit")
+
+shuffled_bedClosest <- shuffled_bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Group", values_to = "isit")
+
+#filter(bedClosest, is.na(isit)==FALSE) %>% 
+  #ggplot( aes(x = V13,y=..scaled.. , group = isit, fill=isit)) +
+  #geom_density(alpha = 0.6)
+
+filter(bedClosest, is.na(isit)==FALSE) %>% 
+  ggplot( aes(x = V13, group = isit, fill=isit)) +
+  geom_density(alpha = 0.6)+
+  scale_fill_manual(values=wes_palette("FantasticFox1", n=3))
+
+filter(shuffled_bedClosest, is.na(isit)==FALSE) %>% 
+  ggplot( aes(x = V13, group = isit, fill=isit)) +
+  geom_density(alpha = 0.6)+
+  scale_fill_manual(values=wes_palette("FantasticFox1", n=3))
+
+print("median distance with different window sizes")
+print("150 nt:")
+tapply(bedClosest$V13, bedClosest$isit, summary)
+```
+
+```{r}
+colnames(bedClosest)[10] <- c("name")
+colnames(bedClosest)[4] <- c("X")
+#filter eclip by ids in bed closest
+bedClosest <- left_join(bedClosest, reorgPUM2_eclip_filt[, c("name", "ddG_flip")], by = "name")
+bedClosest <- left_join(bedClosest, reorgPUM2_Hdox_rabe_filt[,c("X", "diffratios", "padj")], by = "X")
+#resort by order in bed closest
+#plot cons seq ddg vs PUM2 diffratios
+filter(bedClosest, isit=='b') %>% 
+  ggplot( aes(x = ddG_flip, y = diffratios, color = V13))+
+    geom_point()
+
+filter(bedClosest, isit=='b') %>% 
+  ggplot( aes(x = ddG_flip, y = padj, color = V13))+
+    geom_point()+
+    scale_y_reverse()
+
+```
+
+
+```{r}
+#motif scan rabe and plug that into ddg prediction alg
+```
+
+
+```{r}
+
+```
+

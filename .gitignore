@@ -1,0 +1,53 @@
+# History files
+.Rhistory
+.Rapp.history
+
+# Subdirectories
+__pycache__/
+genomeFiles/
+Jarmoskaite_2019_data/
+PUM1_analysis/
+PUM2_analysis/
+PUM12_deaminase_data/
+
+# BED files
+*.bed
+
+# Session Data files
+.RData
+.RDataTmp
+
+# User-specific files
+.Ruserdata
+
+# gz files
+/*.tar.gz
+
+
+# Output files from R CMD check
+/*.Rcheck/
+
+# RStudio files
+.Rproj.user/
+
+# produced vignettes
+vignettes/*.html
+vignettes/*.pdf
+
+# knitr and R markdown default cache directories
+*_cache/
+/cache/
+
+# Temporary files created by R markdown
+*.utf8.md
+*.knit.md
+
+# R Environment Variables
+.Renviron
+
+# translation temp files
+po/*~
+
+# RStudio Connect folder
+rsconnect/
+Footer
