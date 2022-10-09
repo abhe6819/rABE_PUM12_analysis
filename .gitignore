@@ -1,6 +1,9 @@
+.DS_Store
+
 # History files
 .Rhistory
 .Rapp.history
+.ipynb_checkpoints/
 
 # Subdirectories
 __pycache__/
