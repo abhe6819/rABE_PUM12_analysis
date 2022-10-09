@@ -4,6 +4,8 @@ author: "Abby Hein"
 date: "2022-10-02"
 output: html_document
 ---
+# PUM2 rABE deaminase data
+## High dox
 1- move id cols to back (PUM rABE and eClIP)
 2- convert PUM vcf to tsv (from csv)
 ```{r setup, include=FALSE}
@@ -17,22 +19,54 @@ library(reticulate) #for writing chunks in python
 library(wesanderson)
 library(tidyr)
 library(seqinr)
-#still gotta give colnames and better variable names
 ```
 
-
+### Read data into R
 ```{r}
-#in k562
+#Read in PUM2 eCLIP PUM2 data with constitutionally predicted ddG (in k562)
 PUM2_eclip <- read.table("Jarmoskaite_2019_data/all_unprocessed_st_merged.00.hPUM2_all.random_5e 06.input.ENCFF786ZZB.R2.500.rep2.ENCFF732EQX.rep1.ENCFF231WHF.temp37.co.bed", quote = "", sep = "\t", header = T)
 
-#write fasta for 6U ddG fasta
+#write fasta file
 write.fasta(sequences = as.list(PUM2_eclip$seq), names = PUM2_eclip$name, "PUM1_analysis/PUM2eclip_seq.fa", as.string = TRUE)
 
-#in HEK
+#Read in PUM2 rABE data (high DOX induction) (in HEK)
 PUM1_Hdox_rabe <- read.csv("PUM12_deaminase_data/PUM1-rABE_cmh_A-G-doxH.vcf")
 ```
 
+### Calculate number of adjacent PUM motifs within 50 bp
+```{r}
+numAdjMotif <- rep(0, nrow(PUM2_eclip))
+for (ii in 1:nrow(PUM2_eclip)) {
+  jj <- ii+1
+  ll <- ii-1
+  if(ll!=0) {
+    while(ll!=ii & PUM2_eclip$chrm[ii] == PUM2_eclip$chrm[ll]){
+      disPrev <- abs(PUM2_eclip$start[ii] - PUM2_eclip$stop[ll])
+      if (disPrev > 25) {
+        ll <- ii
+      } else {
+        numAdjMotif[ii] <- (numAdjMotif[ii] + 1)
+        ll <- ll-1
+      }
+    }
+  }
+  while(jj != ii & jj < (nrow(PUM2_eclip)+1) & PUM2_eclip$chrm[ii] == PUM2_eclip$chrm[jj]){
+    disNext <- abs(PUM2_eclip$stop[ii] - PUM2_eclip$start[jj])
+    if (disNext > 25) {
+      jj <- ii
+    } else {
+      numAdjMotif[ii] <- (numAdjMotif[ii] + 1)
+      jj <- jj+1
+    }
+    if (jj >= (nrow(PUM2_eclip)+1)) {
+      break
+    }
+  }
+}
+PUM2_eclip <- cbind(PUM2_eclip, numAdjMotif)
+```
 
+### Format data to BED format
 ```{r}
 #reorg to fit bed format
 reorgPUM2_eclip <- PUM2_eclip %>% relocate(name, .after = last_col()) %>% relocate(split_id, .after = last_col()) %>% relocate(strand, .after = last_col())
@@ -49,43 +83,47 @@ write.table(reorgPUM1_Hdox_rabe[,-c(4:45)], "PUM1_analysis/reorgPUM12_deaminase_
 write.table(reorgPUM1_Hdox_rabe_filt[,-c(4:45)], "PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
 ```
 
-
+### bedtools analysis to associate nearest eCLIP motif to deaminase site
 ```{bash engine.opts='-l'}
 sort -k1,1 -k2,2n PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.bed > PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed
 
 sort -k1,1 -k2,2n PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.bed > PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed
 
+# Determine closest PUM2 binding motif (as predicted in eCLIP data)
+## forcing same strand, ignoring overlaps, and only looking for motifs downstream of the deamination site
 bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM1_analysis/PUM1_downstreamclosest_eclip.bed
 
 #measuring genomic distance not transcriptomic (consider this? https://www.bioconductor.org/packages/devel/bioc/vignettes/ensembldb/inst/doc/coordinate-mapping.html)
-bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -s > PUM1_analysis/PUM1_updownstreamclosest_eclip.bed
+## not forcing downstream motif
+##measuring genomic distance not transcriptomic (consider this? https://www.bioconductor.org/packages/devel/bioc/vignettes/ensembldb/inst/doc/coordinate-mapping.html)
+bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -s > PUM1_analysis/PUM1_updownstreamclosest_eclip.bed
 
-bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM1_analysis/shuffled_PUM1_downstreamclosest_eclip.bed
+##closest measured to shuffled eCLIP data
+bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM1_analysis/shuffled_PUM1_downstreamclosest_eclip.bed
 
-bedtools fisher -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/sorted.human.hg38.genome
+# Fisher's exact test to see if closeness is significant
+bedtools fisher -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/sorted.human.hg38.genome
 
-bedtools fisher -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/sorted.human.hg38.genome
+##vs significance for shuffled eclip data
+bedtools fisher -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/sorted.human.hg38.genome
 ```
 
 
-
+### Read processed data back into R
 ```{r}
+# Make GRange objects from generated bed files (this is the unfiltered data) 
 PUM2_eclipBED <-toGRanges("reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed")
 PUM1_Hdox_rabeBED<- toGRanges("PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed")
 
+# Read in data frames rABE data correlated to closest eCLIP motif
 PUM1_bedClosest <-read.table("PUM1_analysis/PUM1_downstreamclosest_eclip.bed", sep = "\t", header = F)
 PUM1_shuffled_bedClosest <-read.table("PUM1_analysis/shuffled_PUM1_downstreamclosest_eclip.bed", sep = "\t", header = F)
 PUM1_udbedClosest <-read.table("PUM1_analysis/PUM1_updownstreamclosest_eclip.bed", sep = "\t", header = F)
 
-#lets do some stats
-#add column for filtered distance (1= within 50, 2=within 100 ect...)
+#add column for filtered distance (a= within 50, b=within 100 ect...)
 PUM1_bedClosest <- PUM1_bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Group", values_to = "isit")
 
 PUM1_shuffled_bedClosest <- PUM1_shuffled_bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Group", values_to = "isit")
-
-#filter(PUM1_bedClosest, is.na(isit)==FALSE) %>% 
-  #ggplot( aes(x = V13,y=..scaled.. , group = isit, fill=isit)) +
-  #geom_density(alpha = 0.6)
 
 filter(PUM1_bedClosest, is.na(isit)==FALSE) %>% 
   ggplot( aes(x = V13, group = isit, fill=isit)) +
@@ -128,11 +166,6 @@ filter(PUM1_bedClosest, isit=='a', diffratios > 0.004, numAdjMotif<=0) %>%
     geom_point()+
     geom_smooth(method = "glm", color = "coral")+
     scale_y_log10()
-
-filter(PUM1_bedClosest, isit=='a', diffratios > 0.004, ss_ddG < 10, ddG<=3) %>% 
-  ggplot( aes(x = ddG, y = padj, color = V13))+
-    geom_point()+
-    scale_y_reverse()
 
 ```
 

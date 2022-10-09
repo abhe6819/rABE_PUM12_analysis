@@ -19,7 +19,6 @@ library(reticulate) #for writing chunks in python
 library(wesanderson)
 library(tidyr)
 library(seqinr)
-#still gotta give colnames and better variable names
 ```
 
 ### Read data into R
@@ -104,11 +103,11 @@ bedtools shuffle -i reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g
 
 # Determine closest PUM2 binding motif (as predicted in eCLIP data)
 ## forcing same strand, ignoring overlaps, and only looking for motifs downstream of the deamination site
-bedtools closest -a PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM2_analysis/PUM2_downstreamclosest_eclip.bed
+bedtools closest -a PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM2_analysis/PUM2_downstreamclosest_eclip.bed
 
 ## not forcing downstream motif
 ##measuring genomic distance not transcriptomic (consider this? https://www.bioconductor.org/packages/devel/bioc/vignettes/ensembldb/inst/doc/coordinate-mapping.html)
-bedtools closest -a PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -s > PUM2_analysis/PUM2_updownstreamclosest_eclip.bed
+bedtools closest -a PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -s > PUM2_analysis/PUM2_updownstreamclosest_eclip.bed
 
 ##closest measured to shuffled eCLIP data
 bedtools closest -a PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.bed -b shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM2_analysis/shuffled_PUM2_downstreamclosest_eclip.bed
