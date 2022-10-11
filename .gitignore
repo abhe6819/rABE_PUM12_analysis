@@ -6,6 +6,7 @@
 .ipynb_checkpoints/
 
 # Subdirectories
+PUM1_eCLIP/
 __pycache__/
 genomeFiles/
 Jarmoskaite_2019_data/

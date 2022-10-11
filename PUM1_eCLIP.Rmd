@@ -1,0 +1,98 @@
+---
+title: "BEDdata_formatting"
+author: "Abby Hein"
+date: "2022-09-29"
+output: html_document
+---
+# PUM2 rABE deaminase data
+## High dox
+1- move id cols to back (PUM rABE and eClIP)
+2- convert PUM vcf to tsv (from csv)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Documents/FloorRotation_Fall22/")
+library(dplyr)
+library(ChIPpeakAnno)
+library(dplyr)
+library(ggplot2)
+library(reticulate) #for writing chunks in python
+library(wesanderson)
+library(tidyr)
+library(seqinr)
+```
+
+### Read data into R
+```{r}
+#Read in PUM2 eCLIP PUM2 data with constitutionally predicted ddG (in k562)
+PUM2_eclip <- read.table("Jarmoskaite_2019_data/all_unprocessed_st_merged.00.hPUM2_all.random_5e 06.input.ENCFF786ZZB.R2.500.rep2.ENCFF732EQX.rep1.ENCFF231WHF.temp37.co.bed", quote = "", sep = "\t", header = T)
+```
+
+### Calculate number of adjacent PUM motifs within 50 bp
+```{r}
+numAdjMotif <- rep(0, nrow(PUM2_eclip))
+for (ii in 1:nrow(PUM2_eclip)) {
+  jj <- ii+1
+  ll <- ii-1
+  if(ll!=0) {
+    while(ll!=ii & PUM2_eclip$chrm[ii] == PUM2_eclip$chrm[ll]){
+      disPrev <- abs(PUM2_eclip$start[ii] - PUM2_eclip$stop[ll])
+      if (disPrev > 25) {
+        ll <- ii
+      } else {
+        numAdjMotif[ii] <- (numAdjMotif[ii] + 1)
+        ll <- ll-1
+      }
+    }
+  }
+  while(jj != ii & jj < (nrow(PUM2_eclip)+1) & PUM2_eclip$chrm[ii] == PUM2_eclip$chrm[jj]){
+    disNext <- abs(PUM2_eclip$stop[ii] - PUM2_eclip$start[jj])
+    if (disNext > 25) {
+      jj <- ii
+    } else {
+      numAdjMotif[ii] <- (numAdjMotif[ii] + 1)
+      jj <- jj+1
+    }
+    if (jj >= (nrow(PUM2_eclip)+1)) {
+      break
+    }
+  }
+}
+PUM2_eclip <- cbind(PUM2_eclip, numAdjMotif)
+```
+
+### Format data to BED format
+```{r}
+#reorg to fit bed format
+reorgPUM2_eclip <- PUM2_eclip %>% relocate(name, .after = last_col()) %>% relocate(split_id, .after = last_col()) %>% relocate(strand, .after = last_col())
+reorgPUM1_Hdox_rabe <- PUM1_Hdox_rabe %>% relocate(X, .after = last_col())  %>% relocate(X.1, .after = last_col()) %>% relocate(exon_strand, .after = last_col())
+
+#filter Jarmoskaite data (according to direction by herchlag lab (no nc rna and split id  < 10))
+reorgPUM2_eclip_filt <- filter(reorgPUM2_eclip, (PUM2_eclip$annotation=="3' UTR"| PUM2_eclip$annotation=="5' UTR"| PUM2_eclip$annotation=='exon')&(PUM2_eclip$score != '.')&(PUM2_eclip$split_id < 10)&(PUM2_eclip$gene_type=='protein-coding'))
+
+#write bed files
+write.table(reorgPUM1_Hdox_rabe[,-c(4:45)], "PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+## **DON'T RUN IN Rstudio** run in terminal cuz R is throwing a fit
+```{bash engine.opts='-l'}
+#rep1
+wget https://www.encodeproject.org/files/ENCFF064COB/@@download/ENCFF064COB.bam 
+mv ENCFF064COB.bam  PUM1_eCLIP/PUM1_eCLIP_rep1ENCFF064COB.bam 
+#rep2
+wget https://www.encodeproject.org/files/ENCFF583QFB/@@download/ENCFF583QFB.bam
+mv ENCFF583QFB.bam  PUM1_eCLIP/PUM1_eCLIP_rep2ENCFF583QFB.bam
+#input
+wget https://www.encodeproject.org/files/ENCFF344PFX/@@download/ENCFF344PFX.bam
+mv ENCFF344PFX.bam  PUM1_eCLIP/PUM1_eCLIP_inputENCFF344PFX.bam
+#merge
+samtools merge PUM1_eCLIP/PUM1_eCLIP_merged.bam PUM1_eCLIP/PUM1_eCLIP_rep1ENCFF064COB.bam  PUM1_eCLIP/PUM1_eCLIP_rep2ENCFF583QFB.bam
+#get second reads
+samtools view -bh -f 128 PUM1_eCLIP/PUM1_eCLIP_merged.bam > PUM1_eCLIP/R2_PUM1_eCLIP_merged.bam
+samtools view -bh -f 128 PUM1_eCLIP/PUM1_eCLIP_inputENCFF344PFX.bam > PUM1_eCLIP/R2_PUM1_eCLIP_input.bam
+#coverage 
+bedtools genomecov -ibam PUM1_eCLIP/R2_PUM1_eCLIP_merged.bam -strand + -bg −5 > PUM1_eCLIP/PUM1_eCLIP_plus.bg
+bedtools genomecov -ibam PUM1_eCLIP/R2_PUM1_eCLIP_merged.bam -strand - -bg −5 > PUM1_eCLIP/PUM1_eCLIP_minus.bg
+bedtools genomecov -ibam PUM1_eCLIP/R2_PUM1_eCLIP_input.bam -strand - -bg −5 > PUM1_eCLIP/PUM1_eCLIP_input_minus.bg
+bedtools genomecov -ibam PUM1_eCLIP/R2_PUM1_eCLIP_input.bam -strand + -bg −5 > PUM1_eCLIP/PUM1_eCLIP_input_plus.bg
+```
+
