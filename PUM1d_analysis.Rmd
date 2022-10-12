@@ -119,6 +119,42 @@ PUM1_Hdox_rabeBED<- toGRanges("PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_
 PUM1_bedClosest <-read.table("PUM1_analysis/PUM1_downstreamclosest_eclip.bed", sep = "\t", header = F)
 PUM1_shuffled_bedClosest <-read.table("PUM1_analysis/shuffled_PUM1_downstreamclosest_eclip.bed", sep = "\t", header = F)
 PUM1_udbedClosest <-read.table("PUM1_analysis/PUM1_updownstreamclosest_eclip.bed", sep = "\t", header = F)
+```
+
+
+```{bash engine.opts='-l'}
+bedtools slop -i PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -g genomeFiles/human.hg38.genome -b 5 > PUM1_analysis/window10nt_PUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed
+
+bedtools getfasta -fi genomeFiles/hg38.fa -bed PUM1_analysis/window10nt_PUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -fo PUM1_analysis/window10nt_PUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.fa
+
+#python pred.py -fi PUM2_analysis/window100nt_PUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_FILTERED.sorted.fa -o PUM2_pum2_pred.txt
+```
+
+
+```{r}
+deaniationSeq <- readDNAStringSet("PUM1_analysis/window10nt_PUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.fa", format = "fasta")
+
+deaniationSeq[which(subseq(deaniationSeq, 5,5)==as.character(unlist("A")))] %>%
+  nucleotideFrequencyAt( 4)
+
+deaniationSeq[which(subseq(deaniationSeq, 5,5)==as.character(unlist("T")))] %>%
+  nucleotideFrequencyAt(6)
+
+Ts <- rep(NA, length(deaniationSeq))
+for(ii in 1:length(deaniationSeq)){
+  if(subseq(deaniationSeq[ii], 5,5)==as.character(unlist("A"))){
+    Ts[ii] <- as.character(unlist(subseq(deaniationSeq[[ii]], 4,4)))
+  } else if(subseq(deaniationSeq[ii], 5,5)==as.character(unlist("T"))){
+    Ts[ii] <- as.character(unlist(subseq(deaniationSeq[[ii]], 6,6)))
+  }
+}
+PUM1_bedClosest<- cbind(PUM1_bedClosest, Ts)
+```
+
+
+```{r}
+#remove deamination sites without a nearby motif
+PUM1_bedClosest <- filter(PUM1_bedClosest, V13!=-1)
 
 #add column for filtered distance (a= within 50, b=within 100 ect...)
 PUM1_bedClosest <- PUM1_bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Window_size", values_to = "within_Window")
@@ -132,7 +168,7 @@ colnames(PUM1_bedClosest)[4] <- c("X")
 PUM1_bedClosest <- left_join(PUM1_bedClosest, reorgPUM2_eclip_filt[, c("name", "ddG", "ss_ddG", "numAdjMotif")], by = "name")
 PUM1_bedClosest <- left_join(PUM1_bedClosest, reorgPUM1_Hdox_rabe[,c("X", "diffratios", "padj", "avgExonDP")], by = "X")
 # rename columns
-colnames(PUM1_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif", "Window_size", "within_Window", "ddG", "ss_ddG","numAdjMotif", "diffratios", "padj", "avgExonDP")
+colnames(PUM1_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif","Ts", "Window_size", "within_Window", "ddG", "ss_ddG","numAdjMotif", "diffratios", "padj", "avgExonDP")
 colnames(PUM1_shuffled_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif","Window_size", "within_Window")
 ```
 
@@ -156,14 +192,14 @@ tapply(PUM1_bedClosest$Distance_to_motif, PUM1_bedClosest$within_Window, summary
 ### Correlation of deamination rate to predicted site delta delat G
 ```{r}
 #plot motif seq ddG vs PUM2 site deamination rate (diffratios)
-filter(PUM1_bedClosest, within_Window=='a', diffratios > 0.004, numAdjMotif<=0, ss_ddG < 10, Distance_to_motif<20) %>% 
+filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
   ggplot( aes(x = ddG, y = diffratios, color = ss_ddG))+
     geom_point()+
     geom_smooth(method = "glm", color = "coral")+
     scale_y_log10()
     
 #plot number of adjascent motifs vs PUM2 site deamination rate (diffratios)
-filter(PUM1_bedClosest, within_Window=='a', diffratios > 0.004, ss_ddG < 5) %>% 
+filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
   ggplot( aes(x = as.factor(numAdjMotif), y = diffratios, color=numAdjMotif))+
     geom_boxplot()+
     scale_y_log10()
@@ -180,7 +216,7 @@ filter(PUM1_bedClosest, within_Window=='a', diffratios > 0.004, numAdjMotif<=0) 
 ### Fitting deamination rate vs. predicted site delta delat G
 ```{r}
 # linear fit of motif seq ddG vs PUM2 site deamination rate (diffratios)
-PUM1_ddg_Fit <- glm(diffratios ~ ddG, data = filter(PUM1_bedClosest, within_Window=='a', diffratios > 0.004, numAdjMotif<=0, ss_ddG < 5))
+PUM1_ddg_Fit <- glm(diffratios ~ ddG, data = filter(PUM1_bedClosest, within_Window=='a', numAdjMotif<=0, numAdjMotif<=0, ss_ddG < 5))
 summary(PUM1_ddg_Fit)
 #R^2
 with(summary(PUM1_ddg_Fit), 1 - deviance/null.deviance)
@@ -191,7 +227,29 @@ cor.test(x=x$diffratios, y=x$ddG, method="spearman", exact = FALSE)
 ```
 
 
+## Machine learning from PUM2
 ```{r}
+PUM1_bedClosest_exonDPfilt <-filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50)
+#PUM1_bedClosest_exonDPfilt <-filter(PUM1_bedClosest, within_Window=='a', padj<0.05)
+
+# Test models
+lmFineModel_PUM1 <- predict.lm(ddG_lmFineModel, newdata = PUM1_bedClosest_exonDPfilt)
+PUM1_fine_eval<-cbind(PUM1_bedClosest_exonDPfilt,lmFineModel_PUM1)
+sqrt(mean((PUM1_fine_eval$diffratios- PUM1_fine_eval$lmFineModel_PUM1)^2))
+
+PUM1_fine_eval<- pivot_longer(PUM1_fine_eval, c("diffratios","lmFineModel_PUM1"), names_to = "Pred_or_Obs", values_to = "rate")
+
+#plot pred vs obs
+#filter(PUM2_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
+  ggplot(PUM1_fine_eval, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
+    geom_point(alpha=0.1)+
+    geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
+    scale_y_log10()
+```
+
+
+```{r}
+
 # rerun with adjusted 6U model (see paper)
 #try hexplot (heatmap scatter plot) geom_hex
 
@@ -229,6 +287,7 @@ filter(PUM1_bedClosest, within_Window=='c') %>%
 
 ```
 
+
 ```{r}
 PUM1_bedClosest_weCLIP <- left_join(PUM1_bedClosest, reorgPUM2_eclip_filt[,c("name", "clip_signal_per_tpm", "clip_input_per_tpm")], by = c("eCLIP_ID"="name"))
 
@@ -252,6 +311,7 @@ filter(PUM1_bedClosest_weCLIP, within_Window=='a', diffratios > 0.004, numAdjMot
 ```
 
 
+
 ```{r}
 w <- filter(PUM1_bedClosest_weCLIP, is.na(clip_signal_per_tpm/clip_input_per_tpm)==FALSE & is.nan(clip_signal_per_tpm/clip_input_per_tpm)==FALSE & is.infinite(clip_signal_per_tpm/clip_input_per_tpm)==FALSE)
 ddg_Fit_score <- glm((clip_signal_per_tpm/clip_input_per_tpm) ~ ddG, data = filter(w, within_Window=='a', diffratios > 0.004, numAdjMotif<=0, ss_ddG < 10))
@@ -261,6 +321,7 @@ with(summary(ddg_Fit_score), 1 - deviance/null.deviance)
 
 cor.test(x=(w$clip_signal_per_tpm/w$clip_input_per_tpm), y=w$ddG, method="pearson",na.action = na.omit)
 ```
+
 # PUM1 eclip data
 
 # upstream t deaminase
