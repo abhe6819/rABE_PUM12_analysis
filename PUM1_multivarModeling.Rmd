@@ -1,0 +1,154 @@
+---
+title: "PUM1_multivarModel"
+author: "Abby Hein"
+date: "2022-10-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Documents/FloorRotation_Fall22/")
+library(dplyr)
+library(dplyr)
+library(ggplot2)
+library(wesanderson)
+library(tidyr)
+library(seqinr)
+library(Biostrings)
+library(usethis) 
+usethis::edit_r_environ()
+```
+
+### Linear Regression
+## model from PUM2
+```{r}
+PUM1_bedClosest_exonDPfilt <-filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50)
+#PUM1_bedClosest_exonDPfilt <-filter(PUM1_bedClosest, within_Window=='a', padj<0.05)
+
+# Test models
+lmFineModel_PUM1 <- predict.lm(ddG_lmFineModel, newdata = PUM1_bedClosest_exonDPfilt)
+PUM1_fine_eval<-cbind(PUM1_bedClosest_exonDPfilt,lmFineModel_PUM1)
+sqrt(mean((PUM1_fine_eval$diffratios- PUM1_fine_eval$lmFineModel_PUM1)^2))
+
+PUM1_fine_eval<- pivot_longer(PUM1_fine_eval, c("diffratios","lmFineModel_PUM1"), names_to = "Pred_or_Obs", values_to = "rate")
+
+#plot pred vs obs
+#filter(PUM2_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
+  ggplot(PUM1_fine_eval, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
+    geom_point(alpha=0.1)+
+    geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
+    scale_y_log10()
+```
+
+## Training on PUM1 data
+```{r}
+sum(is.na(PUM1_bedClosest_exonDPfilt$diffratios))
+
+sum(is.na(PUM1_bedClosest$diffratios))
+ddG_linreg_PUM1 <- lm(formula = diffratios ~ ddG, data = PUM1_bedClosest_exonDPfilt)
+summary(ddG_linreg_PUM1)
+#residuals appear random (yay)
+plot(residuals(ddG_linreg_PUM1))
+chisq.test(table(residuals(ddG_linreg_PUM1)))
+#split data into testing and training datasets
+set.seed(2784)
+## assign random row numbers
+rowNum <- runif(nrow(PUM1_bedClosest_exonDPfilt))
+##split into 80% training 20% testing
+PUM1_train <- subset(PUM1_bedClosest_exonDPfilt, rowNum < 0.8)
+PUM1_test <- subset(PUM1_bedClosest_exonDPfilt, rowNum >= 0.8)
+ddG_lmModel_PUM1 <- lm(diffratios ~ ., data = PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
+summary(ddG_lmModel_PUM1)
+ddG_lmFineModel_PUM1 <- lm(diffratios ~ numAdjMotif+ddG+avgExonDP+(Ts=="C")+(Ts=="G")+Distance_to_motif, data = PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
+summary(ddG_lmFineModel_PUM1)
+# Test models
+ddG_lmModel_PUM1pred <- predict.lm(ddG_lmModel_PUM1, newdata = PUM1_test)
+PUM1_eval<-cbind(PUM1_test$diffratios,ddG_lmModel_PUM1pred)
+sqrt(mean((PUM1_eval[,1]- PUM1_eval[,2])^2))
+
+fromPUM1_lmFineModel_prob <- predict.lm(ddG_lmFineModel_PUM1, newdata = PUM1_test)
+fromPUM1_fine_eval<-cbind(PUM1_test,fromPUM1_lmFineModel_prob)
+sqrt(mean((fromPUM1_fine_eval$diffratios- fromPUM1_fine_eval$fromPUM1_lmFineModel_prob)^2))
+
+plot(x= fromPUM1_fine_eval$fromPUM1_lmFineModel_prob, y= fromPUM1_fine_eval$diffratios)
+abline(a= 0, b=1, col="red")
+cor.test(x= fromPUM1_fine_eval$fromPUM1_lmFineModel_prob, y= fromPUM1_fine_eval$diffratios)
+fromPUM1_fine_eval<- pivot_longer(fromPUM1_fine_eval, c("diffratios","fromPUM1_lmFineModel_prob"), names_to = "Pred_or_Obs", values_to = "rate")
+
+#plot pred vs obs
+#filter(PUM2_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
+  ggplot(fromPUM1_fine_eval, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
+    geom_point(alpha=0.1)+
+    geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
+    scale_y_log10()
+  
+
+```
+
+### Random Forest 
+```{r}
+#split data into testing and training datasets
+set.seed(2785)
+## assign random row numbers
+rowNum <- runif(nrow(PUM1_bedClosest_exonDPfilt))
+##split into 80% training 20% testing
+PUM1_train <- subset(PUM1_bedClosest_exonDPfilt, rowNum < 0.8)
+PUM1_test <- subset(PUM1_bedClosest_exonDPfilt, rowNum >= 0.8)
+
+PUM1_train <- PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+##long to run ()
+#PUM1rf <- randomForest(diffratios~., data=PUM1_train, proximity=TRUE)
+print(PUM1rf)
+
+##long to run
+#mtry <- tuneRF(PUM1_train[-1],PUM1_train$diffratios, ntreeTry=500,stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+#best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+print(mtry)
+print(best.m)
+
+importance(PUM1rf)
+varImpPlot(PUM1rf)
+
+p1 <- predict(PUM1rf, PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
+
+##long to run
+#PUM1rf <- randomForest(diffratios~., mtry=best.m, data=PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")], proximity=TRUE)
+#print(PUM1rf)
+#importance(PUM1rf)
+#varImpPlot(PUM1rf)
+
+PUM1_test<-PUM1_test[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+pred1=predict(PUM1rf, newdata = PUM1_test)
+PUM1_test<-cbind(PUM1_test,pred1)
+sqrt(mean((PUM1_test$diffratios- PUM1_test$pred1)^2))
+
+plot(x= PUM1_test$diffratios, y= PUM1_test$pred1)
+abline(a= 0, b=1, col="red")
+cor.test(x= PUM1_test$diffratios, y= PUM1_test$pred1)
+PUM1_test<- pivot_longer(PUM1_test, c("diffratios","pred1"), names_to = "Pred_or_Obs", values_to = "rate")
+#plot pred vs obs
+#filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
+  ggplot(PUM1_test, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
+    geom_point(alpha=0.1)+
+    geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
+    scale_y_log10()
+```
+### PUM2rf to model PUM1
+```{r}
+P1dat <- PUM1_bedClosest_exonDPfilt[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+pred1=predict(PUM2rf, newdata = P1dat)
+P1dat<-cbind(P1dat,pred1)
+sqrt(mean((P1dat$diffratios- P1dat$pred1)^2))
+
+plot(x= P1dat$diffratios, y= P1dat$pred1)
+abline(a= 0, b=1, col="red")
+cor.test(x= P1dat$diffratios, y= P1dat$pred1)
+P1dat<- pivot_longer(P1dat, c("diffratios","pred1"), names_to = "Pred_or_Obs", values_to = "rate")
+#plot pred vs obs
+#filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
+  ggplot(P1dat, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
+    geom_point(alpha=0.1)+
+    geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
+    scale_y_log10()
+```
+
