@@ -19,6 +19,7 @@ PUM12_deaminase_data/
 
 # Session Data files
 .RData
+*.RData
 .RDataTmp
 
 # User-specific files

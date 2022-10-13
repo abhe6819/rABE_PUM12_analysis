@@ -247,48 +247,7 @@ y <- filter(PUM2_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, s
 cor.test(x=y$diffratios, y=y$ddG, method="spearman", exact = FALSE)
 ```
 
-## Machine learning
-```{r}
-PUM2_bedClosest_exonDPfilt <-filter(PUM2_bedClosest, within_Window=='a', avgExonDP>50)
-#PUM2_bedClosest_exonDPfilt <-filter(PUM2_bedClosest, within_Window=='a', padj<0.05)
 
-sum(is.na(PUM2_bedClosest_exonDPfilt$diffratios))
-
-sum(is.na(PUM2_bedClosest$diffratios))
-ddG_linreg <- lm(formula = diffratios ~ ddG, data = PUM2_bedClosest_exonDPfilt)
-summary(ddG_linreg)
-#residuals appear random (yay)
-plot(residuals(ddG_linreg))
-chisq.test(table(residuals(ddG_linreg)))
-#split data into testing and training datasets
-set.seed(2784)
-## assign random row numbers
-rowNum <- runif(nrow(PUM2_bedClosest_exonDPfilt))
-##split into 80% training 20% testing
-PUM2_train <- subset(PUM2_bedClosest_exonDPfilt, rowNum < 0.8)
-PUM2_test <- subset(PUM2_bedClosest_exonDPfilt, rowNum >= 0.8)
-ddG_lmModel <- lm(diffratios ~ ., data = PUM2_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
-summary(ddG_lmModel)
-ddG_lmFineModel <- lm(diffratios ~ numAdjMotif+ddG+avgExonDP+Ts+Distance_to_motif, data = PUM2_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
-summary(ddG_lmFineModel)
-# Test models
-lmModel_prob <- predict.lm(ddG_lmModel, newdata = PUM2_test)
-PUM2_eval<-cbind(PUM2_test$diffratios,lmModel_prob)
-sqrt(mean((PUM2_eval[,1]- PUM2_eval[,2])^2))
-
-lmFineModel_prob <- predict.lm(ddG_lmFineModel, newdata = PUM2_test)
-PUM2_fine_eval<-cbind(PUM2_test,lmFineModel_prob)
-sqrt(mean((PUM2_fine_eval$diffratios- PUM2_fine_eval$lmFineModel_prob)^2))
-
-PUM2_fine_eval<- pivot_longer(PUM2_fine_eval, c("diffratios","lmFineModel_prob"), names_to = "Pred_or_Obs", values_to = "rate")
-
-#plot pred vs obs
-#filter(PUM2_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
-  ggplot(PUM2_fine_eval, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
-    geom_point(alpha=0.1)+
-    geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
-    scale_y_log10()
-```
 
 ```{r}
 #try random forest fit
