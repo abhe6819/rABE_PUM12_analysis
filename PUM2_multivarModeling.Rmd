@@ -17,6 +17,7 @@ library(Biostrings)
 library(randomForest)
 library(caret)
 library(ROCR)
+library(tune)
 ```
 
 ### Linear Regression
@@ -103,10 +104,14 @@ p1 <- predict(PUM2rf, PUM2_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","num
 PUM2_test<-PUM2_test[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
 pred1=predict(PUM2rf, newdata = PUM2_test)
 PUM2_test<-cbind(PUM2_test,pred1)
+print("PUM2 random forest mean squared error:")
 sqrt(mean((PUM2_test$diffratios- PUM2_test$pred1)^2))
 
-plot(x= PUM2_test$diffratios, y= PUM2_test$pred1)
-abline(a= 0, b=1, col="red")
+ggplot(PUM2_test, aes(x=diffratios, y=pred1, color=abs(diffratios- pred1)))+
+  geom_point(alpha = 0.4)+
+  geom_abline(a= 0, b=1, col="maroon")+
+  scale_colour_viridis_c(option = "viridis",direction = -1)+
+  theme_minimal()
 cor.test(x= PUM2_test$diffratios, y= PUM2_test$pred1)
 PUM2_test<- pivot_longer(PUM2_test, c("diffratios","pred1"), names_to = "Pred_or_Obs", values_to = "rate")
 #plot pred vs obs
@@ -115,5 +120,84 @@ PUM2_test<- pivot_longer(PUM2_test, c("diffratios","pred1"), names_to = "Pred_or
     geom_point(alpha=0.1)+
     geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
     scale_y_log10()
+```
+
+### PUM1rf to model PUM2
+```{r}
+P2dat <- PUM2_bedClosest_exonDPfilt[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+pred2=predict(PUM1rf, newdata = P2dat)
+P2dat<-cbind(P2dat,pred2)
+sqrt(mean((P2dat$diffratios- P2dat$pred2)^2))
+
+ggplot(P2dat, aes(x=diffratios, y=pred2, color=abs(diffratios- pred2)))+
+  geom_point(alpha= 0.5)+
+  geom_abline(a= 0, b=1, col="maroon")+
+  scale_colour_viridis_c(option = "viridis",direction = -1)+
+  theme_minimal()
+  
+cor.test(x= P2dat$diffratios, y= P2dat$pred2)
+P2dat<- pivot_longer(P2dat, c("diffratios","pred2"), names_to = "Pred_or_Obs", values_to = "rate")
+#plot pred vs obs
+#filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
+  ggplot(P2dat, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
+    geom_point(alpha=0.1)+
+    geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
+    scale_y_log10()
+```
+
+
+
+### PUM2 ddG random forest
+```{r, eval=FALSE}
+#split data into testing and training datasets
+set.seed(2785)
+## assign random row numbers
+rowNum <- runif(nrow(PUM2_bedClosest_exonDPfilt))
+##split into 80% training 20% testing
+PUM2_train <- subset(PUM2_bedClosest_exonDPfilt, rowNum < 0.8)
+PUM2_test <- subset(PUM2_bedClosest_exonDPfilt, rowNum >= 0.8)
+
+PUM2_train <- PUM2_train[,c("Distance_to_motif","Ts","ddG","numAdjMotif","diffratios","avgExonDP")]
+##long to run ()
+#PUM2rf_ddG <- randomForest(ddG~., data=PUM2_train, proximity=TRUE)
+print(PUM2rf_ddG)
+
+##long to run
+#mtry_ddG2 <- tuneRF(PUM2_train[-1],PUM2_train$ddG, ntreeTry=500,stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+#best.m_ddG2 <- mtry_ddG2[mtry_ddG2[, 2] == min(mtry_ddG2[, 2]), 1]
+print(mtry_ddG2)
+print(best.m_ddG2)
+
+importance(PUM2rf_ddG)
+varImpPlot(PUM2rf_ddG)
+
+p1 <- predict(PUM2rf_ddG, PUM2_train[,c("Distance_to_motif","Ts","ddG","numAdjMotif","diffratios","avgExonDP")])
+
+##long to run
+#PUM2rf_ddG <- randomForest(ddD~., mtry=best.m_ddG2, data=PUM2_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")], proximity=TRUE)
+#print(PUM2rf_ddG)
+#importance(PUM2rf_ddG)
+#varImpPlot(PUM2rf_ddG)
+
+PUM2_test<-PUM2_test[,c("Distance_to_motif","Ts","ddG","numAdjMotif","diffratios","avgExonDP")]
+pred1=predict(PUM2rf_ddG, newdata = PUM2_test)
+PUM2_test<-cbind(PUM2_test,pred1)
+print("PUM2 random forest Mean squared error:")
+sqrt(mean((PUM2_test$ddG- PUM2_test$pred1)^2))
+
+ggplot(PUM2_test, aes(x=ddG, y=pred1, color=abs(ddG- pred1)))+
+  geom_point(alpha = 0.4)+
+  geom_abline(a= 0, b=1, col="maroon")+
+  scale_colour_viridis_c(option = "viridis",direction = -1)+
+  theme_minimal()
+
+cor.test(x= PUM2_test$ddG, y= PUM2_test$pred1)
+PUM2_test<- pivot_longer(PUM2_test, c("ddG","pred1"), names_to = "Pred_or_Obs", values_to = "affinity")
+#plot pred vs obs
+#filter(PUM2_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
+  ggplot(PUM2_test, aes(x = diffratios, y = affinity, group = Pred_or_Obs, color=Pred_or_Obs))+
+    geom_point(alpha=0.1)+
+    geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
+    scale_x_log10()
 ```
 

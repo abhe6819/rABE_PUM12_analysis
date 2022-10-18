@@ -303,11 +303,25 @@ filter(reorgPUM2_eclip_filt) %>%
     geom_smooth(method = "glm", color = "coral")+
     scale_y_log10()
 
-filter(reorgPUM2_eclip_filt, ss_ddG<10 , numAdjMotif<=1) %>%
+filter(reorgPUM2_eclip_filt, ss_ddG<10 , numAdjMotif<=0, ddG<=3) %>%
   ggplot( aes(x = ddG, y = clip_signal_per_tpm/clip_input_per_tpm))+
     geom_point(alpha=0.25)+
     geom_smooth(method = "glm", color = "coral")+
     scale_y_log10()
+
+filter(reorgPUM2_eclip_filt, ss_ddG<10 , numAdjMotif<=0, ddG<=3) %>%
+  ggplot( aes(x = ddG, y = clip_signal_per_tpm/clip_input_per_tpm))+
+    geom_point(alpha=0.25)+
+    geom_smooth(method = "glm", color = "coral")+
+    scale_y_log10()+
+    scale_x_binned()
+
+filter(PUM2_bedClosest_weCLIP, numAdjMotif<=0, ss_ddG<14) %>%
+  ggplot( aes(x = ss_ddG, y = clip_signal_per_tpm/clip_input_per_tpm))+
+    geom_point(alpha=0.25)+
+    geom_smooth(method = "glm", color = "coral")+
+    scale_y_log10()+
+    scale_x_binned()
 ```
 
 ```{r}
