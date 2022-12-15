@@ -56,3 +56,9 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 Footer
+
+#xml files
+*.xml
+
+#fasta files
+*.fa

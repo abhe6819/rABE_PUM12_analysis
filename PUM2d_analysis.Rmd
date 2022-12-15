@@ -99,6 +99,20 @@ sort -k1,1 -k2,2n reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.bed > reorgJarm
 
 sort -k1,1 -k2,2n genomeFiles/human.hg38.genome > genomeFiles/sorted.human.hg38.genome
 
+#expand 20nt around each deamination site and PUM motif with bedtools sop
+bedtools slop -i PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -g genomeFiles/human.hg38.genome -b 20 > PUM2_analysis/window20nt_PUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed
+
+bedtools slop -i reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed -g genomeFiles/human.hg38.genome -b 20 > window20nt_reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed
+
+#calculate GC% and # As around motif and deamination sites with bedtools nuc
+bedtools nuc -fi genomeFiles/hg38.fa -bed window20nt_reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed | cut -f 1-6 -f 8-9 > nucwindow20nt_reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed
+
+bedtools nuc -fi genomeFiles/hg38.fa -bed PUM2_analysis/window20nt_PUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed | cut -f 1-6 -f 8-9 > PUM2_analysis/nucwindow20nt_PUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed
+
+#convert 20nt window files to fastas with bedtools get fasta
+#run rnaLfold around each motif and deamination site (on brubeck)
+
+
 # Shuffle and sort eCLIP data to generate a control (need to add a seed)
 bedtools shuffle -i reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -g genomeFiles/human.hg38.genome -seed 1551 | sort -k1,1 -k2,2n  > shuff_reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed
 ##shuffle within the transcriptome rather than genome (try using these links as genome files https://www.gencodegenes.org/human/ or http://ftp.ensembl.org/pub/release-107/fasta/homo_sapiens/cdna/)
@@ -131,6 +145,12 @@ PUM2_Hdox_rabeBED<- toGRanges("PUM2_analysis/reorgPUM12_deaminase_dataPUM2-rABE_
 PUM2_bedClosest <-read.table("PUM2_analysis/PUM2_downstreamclosest_eclip.bed", sep = "\t", header = F)
 PUM2_shuffled_bedClosest <-read.table("PUM2_analysis/shuffled_PUM2_downstreamclosest_eclip.bed", sep = "\t", header = F)
 PUM2_udbedClosest <-read.table("PUM2_analysis/PUM2_updownstreamclosest_eclip.bed", sep = "\t", header = F)
+PUM2eclip_20nt_nuc <- read.table("nucwindow20nt_reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed", sep = "\t", header = F)
+PUM2eclip_20nt_nuc <- PUM2eclip_20nt_nuc[,c("V4","V7","V8")]
+colnames(PUM2eclip_20nt_nuc) <- c("V10","motif_GC", "motif_Arichness")
+PUM2rabw_20nt_nuc <- read.table("PUM2_analysis/nucwindow20nt_PUM12_deaminase_dataPUM2-rABE_cmh_A-G-doxH_unfiltered.sorted.bed", sep = "\t", header = F)
+PUM2rabw_20nt_nuc <- PUM2rabw_20nt_nuc[,c("V4","V7","V8")]
+colnames(PUM2rabw_20nt_nuc) <- c("V4","deam_GC", "deam_Arichness")
 ```
 
 
@@ -168,6 +188,9 @@ PUM2_bedClosest<- cbind(PUM2_bedClosest, Ts)
 #remove deamination sites without a nearby motif
 PUM2_bedClosest <- filter(PUM2_bedClosest, V13!=-1)
 
+PUM2_bedClosest <- left_join(PUM2_bedClosest, PUM2eclip_20nt_nuc, by = "V10")
+PUM2_bedClosest <- left_join(PUM2_bedClosest, PUM2rabw_20nt_nuc, by = "V4")
+
 #add column for filtered distance (a= within 50, b=within 100 ect...)
 PUM2_bedClosest <- PUM2_bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Window_size", values_to = "within_Window")
 
@@ -180,7 +203,7 @@ colnames(PUM2_bedClosest)[4] <- c("X")
 PUM2_bedClosest <- left_join(PUM2_bedClosest, reorgPUM2_eclip_filt[, c("name", "ddG", "ss_ddG", "numAdjMotif")], by = "name")
 PUM2_bedClosest <- left_join(PUM2_bedClosest, reorgPUM2_Hdox_rabe[,c("X", "diffratios", "padj", "avgExonDP")], by = "X")
 # rename columns
-colnames(PUM2_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif","Ts", "Window_size", "within_Window", "ddG", "ss_ddG","numAdjMotif", "diffratios", "padj", "avgExonDP")
+colnames(PUM2_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness", "Window_size", "within_Window", "ddG", "ss_ddG","numAdjMotif", "diffratios", "padj", "avgExonDP")
 colnames(PUM2_shuffled_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif","Window_size", "within_Window")
 ```
 
@@ -238,7 +261,7 @@ filter(PUM2_bedClosest, within_Window=='a', diffratios > 0.004, numAdjMotif<=0) 
 # linear fit of motif seq ddG vs PUM2 site deamination rate (diffratios)
 ddg_Fit <- glm(diffratios ~ ddG, data = filter(PUM2_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG < 10))
 summary(ddg_Fit)
-ddg_Fit <- glm(diffratios ~ ddG+ as.factor(Ts)+ numAdjMotif+ss_ddG+avgExonDP+Distance_to_motif, data = filter(PUM2_bedClosest, within_Window=='a'))
+ddg_Fit <- glm(diffratios ~ ddG+ as.factor(Ts)+ numAdjMotif+ss_ddG+avgExonDP+Distance_to_motif+deam_Arichness+deam_GC+motif_GC+motif_Arichness, data = filter(PUM2_bedClosest, within_Window=='a'))
 summary(ddg_Fit)
 #R^2
 with(summary(ddg_Fit), 1 - deviance/null.deviance)
@@ -307,7 +330,10 @@ filter(reorgPUM2_eclip_filt, ss_ddG<10 , numAdjMotif<=0, ddG<=3) %>%
   ggplot( aes(x = ddG, y = clip_signal_per_tpm/clip_input_per_tpm))+
     geom_point(alpha=0.25)+
     geom_smooth(method = "glm", color = "coral")+
-    scale_y_log10()
+    scale_y_log10()+
+    theme_minimal()+
+    xlab("Predicted ddG")+
+    ylab("eCLIP signal (signal/input)")
 
 filter(reorgPUM2_eclip_filt, ss_ddG<10 , numAdjMotif<=0, ddG<=3) %>%
   ggplot( aes(x = ddG, y = clip_signal_per_tpm/clip_input_per_tpm))+

@@ -1,0 +1,25 @@
+---
+title: "make_PCNA_reporterSeq"
+author: "Abby Hein"
+date: "2022-10-19"
+output: html_document
+---
+
+```{bash engine.opts='-l'}
+# PCNA 3'UTR coordinates (hg38)
+## obtained from http://genome.ucsc.edu/cgi-bin/hgTables 
+echo $'chr20\t5114952\t5115282\tENST00000379143.10_utr3_0_0_chr20_5114953_r\t0\t-' > PCNA_3primeUTR.bed
+## convert to fasta
+bedtools getfasta -fi genomeFiles/hg38.fa -bed PCNA_3primeUTR.bed -fo PCNA_3primeUTR.fa -s
+```
+
+
+```{r setup, include=FALSE}
+library(DNABarcodes)
+```
+
+# Generate 6-mer barcodes
+```{r}
+create.dnabarcodes(6, dist = 4, filter.gc = T)
+```
+

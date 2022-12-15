@@ -58,9 +58,9 @@ rowNum <- runif(nrow(PUM1_bedClosest_exonDPfilt))
 ##split into 80% training 20% testing
 PUM1_train <- subset(PUM1_bedClosest_exonDPfilt, rowNum < 0.8)
 PUM1_test <- subset(PUM1_bedClosest_exonDPfilt, rowNum >= 0.8)
-ddG_lmModel_PUM1 <- lm(diffratios ~ ., data = PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
+ddG_lmModel_PUM1 <- lm(diffratios ~ ., data = PUM1_train[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
 summary(ddG_lmModel_PUM1)
-ddG_lmFineModel_PUM1 <- lm(diffratios ~ numAdjMotif+ddG+avgExonDP+(Ts=="C")+(Ts=="G")+Distance_to_motif, data = PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
+ddG_lmFineModel_PUM1 <- lm(diffratios ~ numAdjMotif+ddG+avgExonDP+(Ts=="C")+(Ts=="G")+motif_GC, data = PUM1_train[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
 summary(ddG_lmFineModel_PUM1)
 # Test models
 ddG_lmModel_PUM1pred <- predict.lm(ddG_lmModel_PUM1, newdata = PUM1_test)
@@ -81,7 +81,8 @@ fromPUM1_fine_eval<- pivot_longer(fromPUM1_fine_eval, c("diffratios","fromPUM1_l
   ggplot(fromPUM1_fine_eval, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
     geom_point(alpha=0.1)+
     geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
-    scale_y_log10()
+    scale_y_log10()+
+    theme_minimal()
   
 
 ```
@@ -95,11 +96,13 @@ rowNum <- runif(nrow(PUM1_bedClosest_exonDPfilt))
 ##split into 80% training 20% testing
 PUM1_train <- subset(PUM1_bedClosest_exonDPfilt, rowNum < 0.8)
 PUM1_test <- subset(PUM1_bedClosest_exonDPfilt, rowNum >= 0.8)
+PUM1_train_full <- subset(PUM1_bedClosest_exonDPfilt, rowNum < 0.8)
+PUM1_test_full <- subset(PUM1_bedClosest_exonDPfilt, rowNum >= 0.8)
 
-PUM1_train <- PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+PUM1_train <- PUM1_train[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
 ##long to run ()
 #PUM1rf <- randomForest(diffratios~., data=PUM1_train, proximity=TRUE)
-print(PUM1rf)
+#print(PUM1rf)
 
 ##long to run
 #mtry <- tuneRF(PUM1_train[-1],PUM1_train$diffratios, ntreeTry=500,stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
@@ -110,38 +113,78 @@ print(best.m)
 importance(PUM1rf)
 varImpPlot(PUM1rf)
 
-p1 <- predict(PUM1rf, PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
+p1 <- predict(PUM1rf, PUM1_train[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
 
 ##long to run
-#PUM1rf <- randomForest(diffratios~., mtry=best.m, data=PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")], proximity=TRUE)
+#PUM1rf <- randomForest(diffratios~., mtry=best.m, data=PUM1_train[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")], proximity=TRUE)
 #print(PUM1rf)
 #importance(PUM1rf)
 #varImpPlot(PUM1rf)
 
-PUM1_test<-PUM1_test[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
-pred1=predict(PUM1rf, newdata = PUM1_test)
-PUM1_test<-cbind(PUM1_test,pred1)
+PUM1_test<-PUM1_test[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+predp1=predict(PUM1rf, newdata = PUM1_test)
+PUM1_test<-cbind(PUM1_test,predp1)
 print("PUM1 random forest Mean squared error:")
-sqrt(mean((PUM1_test$diffratios- PUM1_test$pred1)^2))
+sqrt(mean((PUM1_test$diffratios- PUM1_test$predp1)^2))
 
-ggplot(PUM1_test, aes(x=diffratios, y=pred1, color=abs(diffratios- pred1)))+
+ggplot(PUM1_test, aes(x=diffratios, y=predp1, color=abs(diffratios- predp1)))+
   geom_point(alpha = 0.4)+
   geom_abline(a= 0, b=1, col="maroon")+
   scale_colour_viridis_c(option = "viridis",direction = -1)+
-  theme_minimal()
+  theme_minimal()+
+  coord_cartesian(xlim = c(-0.08, 0.5), ylim = c(-0.01, 0.25))
 
-cor.test(x= PUM1_test$diffratios, y= PUM1_test$pred1)
-PUM1_test<- pivot_longer(PUM1_test, c("diffratios","pred1"), names_to = "Pred_or_Obs", values_to = "rate")
+cor.test(x= PUM1_test$diffratios, y= PUM1_test$predp1)
+PUM1_test_full <- cbind(PUM1_test_full, predp1,(PUM1_test$diffratios-predp1))
+PUM1_test<- pivot_longer(PUM1_test, c("diffratios","predp1"), names_to = "Pred_or_Obs", values_to = "rate")
 #plot pred vs obs
 #filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
   ggplot(PUM1_test, aes(x = ddG, y = rate, group = Pred_or_Obs, color=Pred_or_Obs))+
     geom_point(alpha=0.1)+
     geom_smooth(method = "lm",  aes(group= Pred_or_Obs,color=Pred_or_Obs))+
-    scale_y_log10()
+    scale_y_log10()+
+    theme_minimal()
 ```
+
+```{r}
+filter(PUM1_test_full, padj<=0.05)%>%
+  ggplot(aes(x=diffratios, y=predp1, color=abs(diffratios- predp1)))+
+    geom_point(alpha = 0.4)+
+    geom_abline(a= 0, b=1, col="maroon")+
+    scale_colour_viridis_c(option = "viridis",direction = -1)+
+    theme_minimal()+
+    coord_cartesian(xlim = c(-0.08, 0.5), ylim = c(-0.01, 0.25))
+signif<-filter(PUM1_test_full, padj<=0.05)
+cor.test(x= signif$diffratios, y= signif$predp1)
+```
+
+```{r}
+#PUM2_test_full <- cbind(PUM2_test_full, pred1,(PUM2_test$diffratios-pred1))
+ggplot(PUM1_test_full, aes(`(PUM1_test$diffratios - predp1)`))+
+  geom_density()
+out <- boxplot.stats(PUM1_test_full$`(PUM1_test$diffratios - predp1)`)$out
+out_ind <- which(PUM1_test_full$`(PUM1_test$diffratios - predp1)` %in% c(out))
+#sig out
+outlierAnno <- annotatePeak(makeGRangesFromDataFrame(filter(PUM1_test_full[out_ind,], padj<=0.05)[,1:6]), TxDb=TxDb.Hsapiens.UCSC.hg38.knownGene)
+enrichmentResults <- enrichPathway(outlierAnno@anno$geneId)
+dotplot(enrichmentResults)
+#not sig out
+outlierAnno <- annotatePeak(makeGRangesFromDataFrame(PUM1_test_full[out_ind,1:6]), TxDb=TxDb.Hsapiens.UCSC.hg38.knownGene)
+enrichmentResults <- enrichPathway(outlierAnno@anno$geneId)
+dotplot(enrichmentResults)
+#sig
+outlierAnno <- annotatePeak(makeGRangesFromDataFrame(filter(PUM1_test_full, padj<=0.05)[,1:6]), TxDb=TxDb.Hsapiens.UCSC.hg38.knownGene)
+enrichmentResults <- enrichPathway(outlierAnno@anno$geneId)
+dotplot(enrichmentResults)
+#not sig
+outlierAnno <- annotatePeak(makeGRangesFromDataFrame(PUM1_test_full[,1:6]), TxDb=TxDb.Hsapiens.UCSC.hg38.knownGene)
+enrichmentResults <- enrichPathway(outlierAnno@anno$geneId)
+dotplot(enrichmentResults)
+```
+
 ### PUM2rf to model PUM1
 ```{r}
-P1dat <- PUM1_bedClosest_exonDPfilt[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+P1dat <- PUM1_bedClosest_exonDPfilt[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
 pred1=predict(PUM2rf, newdata = P1dat)
 P1dat<-cbind(P1dat,pred1)
 sqrt(mean((P1dat$diffratios- P1dat$pred1)^2))
@@ -172,21 +215,21 @@ rowNum <- runif(nrow(PUM1_bedClosest_exonDPfilt))
 PUM1_train <- subset(PUM1_bedClosest_exonDPfilt, rowNum < 0.8)
 PUM1_test <- subset(PUM1_bedClosest_exonDPfilt, rowNum >= 0.8)
 
-PUM1_train <- PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+PUM1_train <- PUM1_train[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
 ##long to run ()
-#PUM1rf_ddG <- randomForest(ddG~., data=PUM1_train, proximity=TRUE)
+PUM1rf_ddG <- randomForest(ddG~., data=PUM1_train, proximity=TRUE)
 print(PUM1rf_ddG)
 
 ##long to run
-#mtry_ddG <- tuneRF(PUM1_train[-1],PUM1_train$ddG, ntreeTry=500,stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
-#best.m_ddG <- mtry_ddG[mtry_ddG[, 2] == min(mtry_ddG[, 2]), 1]
+mtry_ddG <- tuneRF(PUM1_train[-1],PUM1_train$ddG, ntreeTry=500,stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+best.m_ddG <- mtry_ddG[mtry_ddG[, 2] == min(mtry_ddG[, 2]), 1]
 print(mtry_ddG)
 print(best.m_ddG)
 
 importance(PUM1rf_ddG)
 varImpPlot(PUM1rf_ddG)
 
-p1 <- predict(PUM1rf_ddG, PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
+p1 <- predict(PUM1rf_ddG, PUM1_train[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")])
 
 ##long to run
 #PUM1rf_ddG <- randomForest(ddD~., mtry=best.m_ddG, data=PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")], proximity=TRUE)
@@ -194,7 +237,7 @@ p1 <- predict(PUM1rf_ddG, PUM1_train[,c("Distance_to_motif","Ts","ddG","ss_ddG",
 #importance(PUM1rf_ddG)
 #varImpPlot(PUM1rf_ddG)
 
-PUM1_test<-PUM1_test[,c("Distance_to_motif","Ts","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
+PUM1_test<-PUM1_test[,c("Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness","ddG","ss_ddG","numAdjMotif","diffratios","avgExonDP")]
 pred1=predict(PUM1rf_ddG, newdata = PUM1_test)
 PUM1_test<-cbind(PUM1_test,pred1)
 print("PUM1 random forest Mean squared error:")

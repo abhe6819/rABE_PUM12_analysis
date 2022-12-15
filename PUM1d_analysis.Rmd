@@ -89,6 +89,16 @@ sort -k1,1 -k2,2n PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_
 
 sort -k1,1 -k2,2n PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.bed > PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_FILTERED.sorted.bed
 
+#expand 20nt around each deamination site and PUM motif with bedtools sop
+bedtools slop -i PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -g genomeFiles/human.hg38.genome -b 20 > PUM1_analysis/window20nt_PUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed
+
+bedtools slop -i reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed -g genomeFiles/human.hg38.genome -b 20 > window20nt_reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed
+
+#calculate GC% and # As around motif and deamination sites with bedtools nuc
+bedtools nuc -fi genomeFiles/hg38.fa -bed window20nt_reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed | cut -f 1-6 -f 8-9 > nucwindow20nt_reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed
+
+bedtools nuc -fi genomeFiles/hg38.fa -bed PUM1_analysis/window20nt_PUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed | cut -f 1-6 -f 8-9 > PUM1_analysis/nucwindow20nt_PUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed
+
 # Determine closest PUM2 binding motif (as predicted in eCLIP data)
 ## forcing same strand, ignoring overlaps, and only looking for motifs downstream of the deamination site
 bedtools closest -a PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed -b reorgJarmoskaite_2019_data_hPUM2eclip_FILTERED.sorted.bed -D ref -io -iu -s > PUM1_analysis/PUM1_downstreamclosest_eclip.bed
@@ -119,6 +129,12 @@ PUM1_Hdox_rabeBED<- toGRanges("PUM1_analysis/reorgPUM12_deaminase_dataPUM1-rABE_
 PUM1_bedClosest <-read.table("PUM1_analysis/PUM1_downstreamclosest_eclip.bed", sep = "\t", header = F)
 PUM1_shuffled_bedClosest <-read.table("PUM1_analysis/shuffled_PUM1_downstreamclosest_eclip.bed", sep = "\t", header = F)
 PUM1_udbedClosest <-read.table("PUM1_analysis/PUM1_updownstreamclosest_eclip.bed", sep = "\t", header = F)
+PUM1eclip_20nt_nuc <- read.table("nucwindow20nt_reorgJarmoskaite_2019_data_hPUM2eclip_unfiltered.sorted.bed", sep = "\t", header = F)
+PUM1eclip_20nt_nuc <- PUM1eclip_20nt_nuc[,c("V4","V7","V8")]
+colnames(PUM1eclip_20nt_nuc) <- c("V10","motif_GC", "motif_Arichness")
+PUM1rabw_20nt_nuc <- read.table("PUM1_analysis/nucwindow20nt_PUM12_deaminase_dataPUM1-rABE_cmh_A-G-doxH_unfiltered.sorted.bed", sep = "\t", header = F)
+PUM1rabw_20nt_nuc <- PUM1rabw_20nt_nuc[,c("V4","V7","V8")]
+colnames(PUM1rabw_20nt_nuc) <- c("V4","deam_GC", "deam_Arichness")
 ```
 
 
@@ -156,6 +172,9 @@ PUM1_bedClosest<- cbind(PUM1_bedClosest, Ts)
 #remove deamination sites without a nearby motif
 PUM1_bedClosest <- filter(PUM1_bedClosest, V13!=-1)
 
+PUM1_bedClosest <- left_join(PUM1_bedClosest, PUM1eclip_20nt_nuc, by = "V10")
+PUM1_bedClosest <- left_join(PUM1_bedClosest, PUM1rabw_20nt_nuc, by = "V4")
+
 #add column for filtered distance (a= within 50, b=within 100 ect...)
 PUM1_bedClosest <- PUM1_bedClosest %>% mutate(within150 = ifelse(V13>=150, NA, 'c'), within100 = ifelse(V13>=100, NA, 'b'), within50 = ifelse(V13>=50, NA, 'a')) %>% pivot_longer(within150:within50, names_to = "Window_size", values_to = "within_Window")
 
@@ -168,7 +187,7 @@ colnames(PUM1_bedClosest)[4] <- c("X")
 PUM1_bedClosest <- left_join(PUM1_bedClosest, reorgPUM2_eclip_filt[, c("name", "ddG", "ss_ddG", "numAdjMotif")], by = "name")
 PUM1_bedClosest <- left_join(PUM1_bedClosest, reorgPUM1_Hdox_rabe[,c("X", "diffratios", "padj", "avgExonDP")], by = "X")
 # rename columns
-colnames(PUM1_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif","Ts", "Window_size", "within_Window", "ddG", "ss_ddG","numAdjMotif", "diffratios", "padj", "avgExonDP")
+colnames(PUM1_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif","Ts","motif_GC", "motif_Arichness","deam_GC", "deam_Arichness", "Window_size", "within_Window", "ddG", "ss_ddG","numAdjMotif", "diffratios", "padj", "avgExonDP")
 colnames(PUM1_shuffled_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", "rABE_ID", "rABE_ogrow", "rABE_strand", "eCLIP_chrom","eCLIP_start", "eCLIP_stop", "eCLIP_ID", "eCLIP_splitID", "eCLIP_strand", "Distance_to_motif","Window_size", "within_Window")
 ```
 
@@ -177,7 +196,8 @@ colnames(PUM1_shuffled_bedClosest) <- c("rABE_chrom","rABE_start", "rABE_stop", 
 filter(PUM1_bedClosest, is.na(within_Window)==FALSE) %>% 
   ggplot( aes(x = Distance_to_motif, group = within_Window, fill=within_Window)) +
   geom_density(alpha = 0.6)+
-  scale_fill_manual(values=wes_palette("FantasticFox1", n=3))
+  scale_fill_manual(values=wes_palette("FantasticFox1", n=3))+
+  theme_minimal()
 
 filter(PUM1_shuffled_bedClosest, is.na(within_Window)==FALSE, ) %>% 
   ggplot( aes(x = Distance_to_motif, group = within_Window, fill=within_Window)) +
@@ -193,23 +213,31 @@ tapply(PUM1_bedClosest$Distance_to_motif, PUM1_bedClosest$within_Window, summary
 ```{r}
 #plot motif seq ddG vs PUM2 site deamination rate (diffratios)
 filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
-  ggplot( aes(x = ddG, y = diffratios, color = ss_ddG))+
+  ggplot( aes(x = ddG, y = diffratios, color = avgExonDP))+
     geom_point()+
     geom_smooth(method = "glm", color = "coral")+
-    scale_y_log10()
+    scale_y_log10()+
+    theme_minimal()+
+    ylab("Deamination Rate")
     
 #plot number of adjascent motifs vs PUM2 site deamination rate (diffratios)
-filter(PUM1_bedClosest, within_Window=='a', avgExonDP>50, numAdjMotif<=0, ss_ddG<10) %>% 
+filter(PUM2_bedClosest, within_Window=='a', diffratios > 0.004, ss_ddG < 10) %>% 
   ggplot( aes(x = as.factor(numAdjMotif), y = diffratios, color=numAdjMotif))+
     geom_boxplot()+
-    scale_y_log10()
+    scale_y_log10()+
+    theme_minimal()+
+    ylab("Deamination Rate")+
+    xlab("Number of Adjascent PUM Motifs")
 
 #plot predicted structure vs PUM2 site deamination rate (diffratios)
 filter(PUM1_bedClosest, within_Window=='a', diffratios > 0.004, numAdjMotif<=0) %>% 
-  ggplot( aes(x = ss_ddG, y = diffratios, color = numAdjMotif))+
-    geom_point()+
+  ggplot( aes(x = ss_ddG, y = diffratios))+
+    geom_point(color = "cornflowerblue", alpha=0.25)+
     geom_smooth(method = "glm", color = "coral")+
-    scale_y_log10()
+    scale_y_log10()+
+    theme_minimal()+
+    ylab("Deamination Rate")+
+    xlab("Secondary Structure Favorability")
 
 ```
 
@@ -218,6 +246,8 @@ filter(PUM1_bedClosest, within_Window=='a', diffratios > 0.004, numAdjMotif<=0) 
 # linear fit of motif seq ddG vs PUM2 site deamination rate (diffratios)
 PUM1_ddg_Fit <- glm(diffratios ~ ddG, data = filter(PUM1_bedClosest, within_Window=='a', numAdjMotif<=0, numAdjMotif<=0, ss_ddG < 5))
 summary(PUM1_ddg_Fit)
+PUM1_ddg_Fit <- glm(diffratios ~ ddG+ as.factor(Ts)+ numAdjMotif+ss_ddG+avgExonDP+Distance_to_motif+deam_Arichness+deam_GC+motif_GC+motif_Arichness, data = filter(PUM2_bedClosest, within_Window=='a'))
+summary(ddg_Fit)
 #R^2
 with(summary(PUM1_ddg_Fit), 1 - deviance/null.deviance)
 
@@ -225,6 +255,7 @@ x <- filter(PUM1_bedClosest, within_Window=='a', diffratios > 0.004, numAdjMotif
 # correlation between motif seq ddG vs PUM2 site deamination rate (diffratios)
 cor.test(x=x$diffratios, y=x$ddG, method="spearman", exact = FALSE)
 ```
+
 
 
 ```{r}
@@ -274,7 +305,10 @@ filter(PUM1_bedClosest_weCLIP, within_Window=='a') %>%
   ggplot( aes(x = clip_signal_per_tpm/clip_input_per_tpm, y = diffratios, color = Distance_to_motif))+
     geom_point()+
     geom_smooth(method = "glm", color = "coral")+
-    scale_x_log10()
+    scale_x_log10()+
+    theme_minimal()+
+    xlab("CLIP signal (signal/input)")+
+    ylab("Deamination Rate")
 
 filter(PUM1_bedClosest_weCLIP, within_Window=='a', diffratios > 0.002, ss_ddG <= 10, ddG<=3) %>% 
   ggplot( aes(x = as.factor(numAdjMotif), y = clip_signal_per_tpm/clip_input_per_tpm, color=numAdjMotif))+
